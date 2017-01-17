@@ -309,17 +309,73 @@ dates_changement <- offres %>%
   `$`(Periode) #pour avoir un vecteur
 
 dates_changement <- c(dates_changement, as_date("2015-12-01"))
+interv <- c("1996 - 2000", "2000 - 2003", "2003 - 2008", "2008 - 2009",
+            "209 - 2011", "2011 - 2013", "2013 - 2015")
+
+offres_totales$intervalle <- cut(offres_totales$Periode, dates_changement,
+                                 labels = interv)
+offres$intervalle <-cut(offres$Periode, dates_changement, labels = interv)
+offres_long$intervalle <- cut(offres_long$Periode, dates_changement, labels = interv)
 
 
-offres_totales$intervalle <- cut(offres$Periode, dates_changement)
 
-ggplot(offres_totales %>% filter(categorie == "Total_France"), 
+ggplot(offres_long, 
        aes(Periode, nombre, color = intervalle)) +
   geom_line() +
-  geom_smooth(method = "lm", se = FALSE)
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ categorie, scales = "free_y", ncol = 1)
 ```
 
 ![](offres_emplois_files/figure-markdown_github/unnamed-chunk-10-1.png)
+
+``` r
+offres_modeles <- offres_long %>% 
+  nest(-categorie, - intervalle) %>%
+  mutate(models = map(data, ~ lm(nombre ~ Periode, data = .))) %>%
+  mutate(tidied = map(models, tidy)) %>%
+  unnest(tidied) %>% 
+  filter(term == "Periode")
+library(knitr)
+kable(arrange(offres_modeles, -p.value))
+```
+
+| categorie     | intervalle  | term    |    estimate|  std.error|  statistic|  p.value|
+|:--------------|:------------|:--------|-----------:|----------:|----------:|--------:|
+| OEE\_B        | 2000 - 2003 | Periode |    -0.21101|    1.99583|   -0.10573|  0.91635|
+| Total\_DOM    | 209 - 2011  | Periode |    -0.13204|    0.23271|   -0.56742|  0.57512|
+| Total\_DOM    | 1996 - 2000 | Periode |    -0.11718|    0.19212|   -0.60993|  0.54491|
+| OEE\_C        | 209 - 2011  | Periode |     1.00680|    1.39685|    0.72076|  0.47725|
+| OEE\_B        | 2013 - 2015 | Periode |     2.82529|    2.14928|    1.31453|  0.19933|
+| Total\_DOM    | 2008 - 2009 | Periode |    -2.64327|    1.91162|   -1.38274|  0.19684|
+| Total\_DOM    | 2013 - 2015 | Periode |    -0.54348|    0.30901|   -1.75876|  0.08955|
+| Total\_DOM    | 2000 - 2003 | Periode |     0.48795|    0.22645|    2.15478|  0.03758|
+| OEE\_C        | 2008 - 2009 | Periode |   -26.91779|   10.30833|   -2.61127|  0.02598|
+| Total\_France | 2013 - 2015 | Periode |    10.96497|    4.59836|    2.38454|  0.02411|
+| OEE\_C        | 2003 - 2008 | Periode |     2.11625|    0.88690|    2.38611|  0.02043|
+| Total\_DOM    | 2003 - 2008 | Periode |     0.37147|    0.13609|    2.72962|  0.00846|
+| OEE\_C        | 2000 - 2003 | Periode |    -3.57868|    1.14927|   -3.11388|  0.00350|
+| OEE\_C        | 2013 - 2015 | Periode |    -9.47138|    1.63872|   -5.77976|  0.00000|
+| Total\_France | 2008 - 2009 | Periode |  -243.56247|   24.64165|   -9.88418|  0.00000|
+| OEE\_A        | 209 - 2011  | Periode |    21.19480|    3.39563|    6.24179|  0.00000|
+| OEE\_A        | 2013 - 2015 | Periode |    17.61106|    2.76760|    6.36329|  0.00000|
+| OEE\_B        | 2008 - 2009 | Periode |   -84.13244|    7.23208|  -11.63324|  0.00000|
+| OEE\_A        | 2008 - 2009 | Periode |  -132.51223|   10.87279|  -12.18751|  0.00000|
+| OEE\_C        | 2011 - 2013 | Periode |   -15.66544|    2.02729|   -7.72727|  0.00000|
+| OEE\_A        | 1996 - 2000 | Periode |     8.27594|    1.34831|    6.13800|  0.00000|
+| Total\_DOM    | 2011 - 2013 | Periode |    -3.03277|    0.38633|   -7.85028|  0.00000|
+| OEE\_A        | 2011 - 2013 | Periode |   -37.49127|    3.46082|  -10.83307|  0.00000|
+| Total\_France | 2000 - 2003 | Periode |   -22.67936|    2.55466|   -8.87763|  0.00000|
+| Total\_France | 209 - 2011  | Periode |    61.19465|    4.53191|   13.50305|  0.00000|
+| Total\_France | 2011 - 2013 | Periode |  -116.43387|    5.08305|  -22.90628|  0.00000|
+| OEE\_C        | 1996 - 2000 | Periode |    12.93011|    1.05366|   12.27161|  0.00000|
+| OEE\_B        | 2011 - 2013 | Periode |   -63.27716|    2.64850|  -23.89168|  0.00000|
+| OEE\_A        | 2000 - 2003 | Periode |   -18.88966|    1.22449|  -15.42661|  0.00000|
+| OEE\_B        | 209 - 2011  | Periode |    38.99305|    1.81504|   21.48328|  0.00000|
+| OEE\_B        | 2003 - 2008 | Periode |    10.96371|    0.70326|   15.58977|  0.00000|
+| OEE\_A        | 2003 - 2008 | Periode |    25.15333|    1.25109|   20.10520|  0.00000|
+| Total\_France | 1996 - 2000 | Periode |    55.42336|    2.21485|   25.02352|  0.00000|
+| Total\_France | 2003 - 2008 | Periode |    38.23328|    1.43519|   26.63980|  0.00000|
+| OEE\_B        | 1996 - 2000 | Periode |    34.21731|    1.03193|   33.15862|  0.00000|
 
 France et DOM
 -------------

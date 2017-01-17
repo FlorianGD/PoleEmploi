@@ -32,6 +32,7 @@ library(tidyverse)
 library(lubridate)    # Pour la gestion des dates
 library(broom)        # Pour la gestion "tidy" des modèles
 library(RColorBrewer) # Pour les palettes des graphes
+library(GGally)       # Pour la mise à l'échelle (rescale11)
 options("scipen"=10, digits = 5) # pour ne pas avoir trop de notation scientifique
 
 #' Grâce à `readr::read_csv2` les colonnes ont directement le bon format (date
@@ -174,81 +175,62 @@ ggplot(
 #' elles stagnent depuis 2013, avec une variabilité qui augmente.
 
 #' ## Modélisation des OEE 
-#' Essayons de faire un modèle simple pour les OEE par catégorie.
-#' ### Modèle linéaire simple : France entière
-modele_france <- lm(nombre ~ Periode,
-                    data = filter(offres_totales, categorie == "Total_France"))
-summary(modele_france)
-#' Le modèle n'est pas très bon (avec un R^2^ de 0.029), mais la tendance qui 
-#' ressort est à la hausse (le coefficient est légèrement positif : 0.003).  
+#' Y a-t-il la même tendance, année par année pour toutes les catégories ? Et
+#' quelles sont les années/catégories qui se distinguent des autres ?  
+#' Pour cela, nous allons  créer des régressions linéaires pour chaque année
+#' et chaque catégorie. Cela nécessitera d'utiliser : 
 #' 
+#' 1. `tidyr::nest` pour créer un tibble avec colonnes de listes, pour regrouper
+#'  les données autres que annee et catégorie ;
+#' 2. `purrr::map` pour appliquer la régression linéaire `lm` pour chaque année
+#' et catégorie ;
+#' 3. encore `purrr::map` pour appliquer `broom::tidy` qui met sous forme de tibble
+#' chaque modèle (mais toujours dans une colonne de listes) ;
+#' 4. et enfin `tidyr::unnest` pour remettre le modèle sous forme de tibble.
 
-annees_changement <- c(1996, 2000, 2003, 2008, 2009, 2011, 2013, 2015)
-
-dates_changement <- offres %>%
-  select(Periode, Total_France) %>%
+offres_modeles <- offres_long %>%
   mutate(annee = year(Periode)) %>%
-  filter(annee %in% annees_changement) %>% 
-  group_by(annee) %>%
-  summarise(mois_max = which.max(Total_France),
-            mois_min = which.min(Total_France),
-            val      = mean(Total_France)) %>% 
-  mutate(evol = sign(lead(val) - val),
-         mois = ifelse(evol == 1, mois_min, mois_max),
-         Periode = as_date(paste(annee, mois, "01", sep ="-"))) %>% 
-  filter(!is.na(Periode)) %>% 
-  `$`(Periode) #pour avoir un vecteur
-
-dates_changement <- c(dates_changement, as_date("2015-12-01"))
-
-
-offres_totales$intervalle <- cut(offres$Periode, dates_changement)
-
-ggplot(offres_totales %>% filter(categorie == "Total_France"), 
-       aes(Periode, nombre, color = intervalle)) +
-  geom_line() +
-  geom_smooth(method = "lm", se = FALSE)
-
-#' 
-#' ## France et DOM
-#' Y a-t-il les mêmes variations entre la France et les DOM ? Nous ne disposons
-#' que des données totales et non par catégorie.
-
-# Plus grande variabilité dans les DOM (avec un volume plus faible), tendances
-# semblables
-# Vérifions à partir d'un modèle linéaire simple
-
-
-mod_lm_France <- lm(Total_France ~ Periode, offres)
-mod_lm_France_df <- tidy(mod_lm_France)
-mod_lm_DOM <- lm(Total_DOM ~ Periode, offres)
-mod_lm_DOM_df <- tidy(mod_lm_DOM)
-
-models <- bind_rows("France" = mod_lm_France_df,"DOM" = mod_lm_DOM_df, .id = "Perimetre")
-models
-# Sur la période, nous ne voyons pas la même tendance : positive et relativement
-# bonne (p.value ~5e-3) pour la France, mais légèrement négative pour les DOM
-
-offres_tot_groupe <- offres_totales %>%
-  mutate(groupe = factor(ifelse(Periode < as.Date("2008-01-01"),
-                                   "Avant 2008", "Après 2008"),
-                             levels = c("Avant 2008", "Après 2008")))
-
-ggplot(offres_tot_groupe, aes(Periode, nombre, color = categorie)) +
-  geom_line() +
-  facet_grid(categorie ~ groupe, scales = "free") +
-  geom_smooth(method = "lm", se = FALSE) +
-  theme_minimal()
-
-# Avant et après la crise de 2008, les tendances sont nettement différentes
-
-offres_nest <- offres_tot_groupe %>%
-  nest(-groupe, - categorie) %>%
+  nest(-annee, -categorie) %>% 
   mutate(models = map(data, ~ lm(nombre ~ Periode, data = .))) %>%
   mutate(tidied = map(models, tidy)) %>%
   unnest(tidied)
 
-offres_nest %>%
-  group_by(term) %>%
-  mutate(p.adjusted = p.adjust(p.value)) %>%
-  select(-statistic, -p.value)
+offres_modeles
+
+#' Ce qui nous intéresse ici est le coefficient de la régression (ce qui est dans
+#' la colonne term et avec la valeur `Periode`) pour savoir quelle
+#' est la tendance (positive, négative, plus ou moins importante)
+
+tendances <- offres_modeles  %>% 
+  filter(term == "Periode") %>% 
+  select(annee, categorie, tendance = estimate)
+
+#' Comme toutes les courbes ne sont pas sur les mêmes échelles de valeurs, nous
+#' allons les remettre à l'échelle entre -1 et 1 pour chaque catégorie avec la
+#'fonction `GGally::rescale11`.
+
+tendance_echelle <- tendances %>% 
+  group_by(categorie) %>% 
+  mutate(tendance = rescale11(tendance))
+
+#' Nous pouvons maintenant faire une "heatmap" pour voir ces évolutions par 
+#' année et par catégorie.
+#+ Heatmap
+ggplot(tendance_echelle, 
+       aes(categorie, annee, fill = tendance)) +
+  geom_raster() +
+  scale_fill_gradientn(colors = brewer.pal(7, "RdYlBu"))+
+  scale_y_continuous(breaks = 1996:2015, labels = 1996:2015) +
+  scale_x_discrete(breaks = levels(tendance_echelle$categorie),
+                   labels = c("A", "B", "C", "DOM", "Total France"))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(x = NULL,
+       y = NULL,
+       fill = "Evolution\nannuelle\nrelative",
+       title = "Evolution annuelle des offres enregitrées d'emploi",
+       subtitle = "Calculée relativement pour chaque catégorie",
+       caption = "Source : pôle emploi")
+
+#' Nous voyons que les catégories C sont en baisse continue (globalement)
+#' depuis 2005 où il y a eu la chute la plus importante.
