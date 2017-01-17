@@ -1,7 +1,7 @@
 Analyse des données ouvertes de pôle emploi
 ================
 Florian Gaudin-Delrieu
-2017-01-16
+2017-01-17
 
 Offres d'emploi
 ===============
@@ -48,6 +48,17 @@ library(lubridate)    # Pour la gestion des dates
 ``` r
 library(broom)        # Pour la gestion "tidy" des modèles
 library(RColorBrewer) # Pour les palettes des graphes
+library(GGally)       # Pour la mise à l'échelle (rescale11)
+```
+
+    ## 
+    ## Attaching package: 'GGally'
+
+    ## The following object is masked from 'package:dplyr':
+    ## 
+    ##     nasa
+
+``` r
 options("scipen"=10, digits = 5) # pour ne pas avoir trop de notation scientifique
 ```
 
@@ -261,191 +272,76 @@ ggplot(
 
 ![](offres_emplois_files/figure-markdown_github/GrapheAetB-1.png)
 
-Nous voyons mieux les variations, les catégories A subissent plus fortement la crise de 2008, mais récupèrent mieux depuis 2013. Les catégories B quant à elles stagnent depuis 2013, avec une variabilité qui augmente. \#\# Modélisation des OEE Essayons de faire un modèle simple pour les OEE par catégorie. \#\#\# Modèle linéaire simple : France entière
+Nous voyons mieux les variations, les catégories A subissent plus fortement la crise de 2008, mais récupèrent mieux depuis 2013. Les catégories B quant à elles stagnent depuis 2013, avec une variabilité qui augmente. \#\# Modélisation des OEE Y a-t-il la même tendance, année par année pour toutes les catégories ? Et quelles sont les années/catégories qui se distinguent des autres ?
+Pour cela, nous allons créer des régressions linéaires pour chaque année et chaque catégorie. Cela nécessitera d'utiliser :
+
+1.  `tidyr::nest` pour créer un tibble avec colonnes de listes, pour regrouper les données autres que annee et catégorie ;
+2.  `purrr::map` pour appliquer la régression linéaire `lm` pour chaque année et catégorie ;
+3.  encore `purrr::map` pour appliquer `broom::tidy` qui met sous forme de tibble chaque modèle (mais toujours dans une colonne de listes) ;
+4.  et enfin `tidyr::unnest` pour remettre le modèle sous forme de tibble.
 
 ``` r
-modele_france <- lm(nombre ~ Periode,
-                    data = filter(offres_totales, categorie == "Total_France"))
-summary(modele_france)
-```
-
-    ## 
-    ## Call:
-    ## lm(formula = nombre ~ Periode, data = filter(offres_totales, 
-    ##     categorie == "Total_France"))
-    ## 
-    ## Residuals:
-    ##    Min     1Q Median     3Q    Max 
-    ## -66.96 -21.96   3.89  21.71  61.13 
-    ## 
-    ## Coefficients:
-    ##               Estimate Std. Error t value Pr(>|t|)    
-    ## (Intercept) 213.958469  12.182348   17.56   <2e-16 ***
-    ## Periode       0.002612   0.000917    2.85   0.0048 ** 
-    ## ---
-    ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-    ## 
-    ## Residual standard error: 29.8 on 237 degrees of freedom
-    ## Multiple R-squared:  0.0331, Adjusted R-squared:  0.029 
-    ## F-statistic: 8.11 on 1 and 237 DF,  p-value: 0.00478
-
-Le modèle n'est pas très bon (avec un R<sup>2</sup> de 0.029), mais la tendance qui ressort est à la hausse (le coefficient est légèrement positif : 0.003).
-
-``` r
-annees_changement <- c(1996, 2000, 2003, 2008, 2009, 2011, 2013, 2015)
-
-dates_changement <- offres %>%
-  select(Periode, Total_France) %>%
+offres_modeles <- offres_long %>%
   mutate(annee = year(Periode)) %>%
-  filter(annee %in% annees_changement) %>% 
-  group_by(annee) %>%
-  summarise(mois_max = which.max(Total_France),
-            mois_min = which.min(Total_France),
-            val      = mean(Total_France)) %>% 
-  mutate(evol = sign(lead(val) - val),
-         mois = ifelse(evol == 1, mois_min, mois_max),
-         Periode = as_date(paste(annee, mois, "01", sep ="-"))) %>% 
-  filter(!is.na(Periode)) %>% 
-  `$`(Periode) #pour avoir un vecteur
-
-dates_changement <- c(dates_changement, as_date("2015-12-01"))
-interv <- c("1996 - 2000", "2000 - 2003", "2003 - 2008", "2008 - 2009",
-            "209 - 2011", "2011 - 2013", "2013 - 2015")
-
-offres_totales$intervalle <- cut(offres_totales$Periode, dates_changement,
-                                 labels = interv)
-offres$intervalle <-cut(offres$Periode, dates_changement, labels = interv)
-offres_long$intervalle <- cut(offres_long$Periode, dates_changement, labels = interv)
-
-
-
-ggplot(offres_long, 
-       aes(Periode, nombre, color = intervalle)) +
-  geom_line() +
-  geom_smooth(method = "lm", se = FALSE) +
-  facet_wrap(~ categorie, scales = "free_y", ncol = 1)
-```
-
-![](offres_emplois_files/figure-markdown_github/unnamed-chunk-10-1.png)
-
-``` r
-offres_modeles <- offres_long %>% 
-  nest(-categorie, - intervalle) %>%
-  mutate(models = map(data, ~ lm(nombre ~ Periode, data = .))) %>%
-  mutate(tidied = map(models, tidy)) %>%
-  unnest(tidied) %>% 
-  filter(term == "Periode")
-library(knitr)
-kable(arrange(offres_modeles, -p.value))
-```
-
-| categorie     | intervalle  | term    |    estimate|  std.error|  statistic|  p.value|
-|:--------------|:------------|:--------|-----------:|----------:|----------:|--------:|
-| OEE\_B        | 2000 - 2003 | Periode |    -0.21101|    1.99583|   -0.10573|  0.91635|
-| Total\_DOM    | 209 - 2011  | Periode |    -0.13204|    0.23271|   -0.56742|  0.57512|
-| Total\_DOM    | 1996 - 2000 | Periode |    -0.11718|    0.19212|   -0.60993|  0.54491|
-| OEE\_C        | 209 - 2011  | Periode |     1.00680|    1.39685|    0.72076|  0.47725|
-| OEE\_B        | 2013 - 2015 | Periode |     2.82529|    2.14928|    1.31453|  0.19933|
-| Total\_DOM    | 2008 - 2009 | Periode |    -2.64327|    1.91162|   -1.38274|  0.19684|
-| Total\_DOM    | 2013 - 2015 | Periode |    -0.54348|    0.30901|   -1.75876|  0.08955|
-| Total\_DOM    | 2000 - 2003 | Periode |     0.48795|    0.22645|    2.15478|  0.03758|
-| OEE\_C        | 2008 - 2009 | Periode |   -26.91779|   10.30833|   -2.61127|  0.02598|
-| Total\_France | 2013 - 2015 | Periode |    10.96497|    4.59836|    2.38454|  0.02411|
-| OEE\_C        | 2003 - 2008 | Periode |     2.11625|    0.88690|    2.38611|  0.02043|
-| Total\_DOM    | 2003 - 2008 | Periode |     0.37147|    0.13609|    2.72962|  0.00846|
-| OEE\_C        | 2000 - 2003 | Periode |    -3.57868|    1.14927|   -3.11388|  0.00350|
-| OEE\_C        | 2013 - 2015 | Periode |    -9.47138|    1.63872|   -5.77976|  0.00000|
-| Total\_France | 2008 - 2009 | Periode |  -243.56247|   24.64165|   -9.88418|  0.00000|
-| OEE\_A        | 209 - 2011  | Periode |    21.19480|    3.39563|    6.24179|  0.00000|
-| OEE\_A        | 2013 - 2015 | Periode |    17.61106|    2.76760|    6.36329|  0.00000|
-| OEE\_B        | 2008 - 2009 | Periode |   -84.13244|    7.23208|  -11.63324|  0.00000|
-| OEE\_A        | 2008 - 2009 | Periode |  -132.51223|   10.87279|  -12.18751|  0.00000|
-| OEE\_C        | 2011 - 2013 | Periode |   -15.66544|    2.02729|   -7.72727|  0.00000|
-| OEE\_A        | 1996 - 2000 | Periode |     8.27594|    1.34831|    6.13800|  0.00000|
-| Total\_DOM    | 2011 - 2013 | Periode |    -3.03277|    0.38633|   -7.85028|  0.00000|
-| OEE\_A        | 2011 - 2013 | Periode |   -37.49127|    3.46082|  -10.83307|  0.00000|
-| Total\_France | 2000 - 2003 | Periode |   -22.67936|    2.55466|   -8.87763|  0.00000|
-| Total\_France | 209 - 2011  | Periode |    61.19465|    4.53191|   13.50305|  0.00000|
-| Total\_France | 2011 - 2013 | Periode |  -116.43387|    5.08305|  -22.90628|  0.00000|
-| OEE\_C        | 1996 - 2000 | Periode |    12.93011|    1.05366|   12.27161|  0.00000|
-| OEE\_B        | 2011 - 2013 | Periode |   -63.27716|    2.64850|  -23.89168|  0.00000|
-| OEE\_A        | 2000 - 2003 | Periode |   -18.88966|    1.22449|  -15.42661|  0.00000|
-| OEE\_B        | 209 - 2011  | Periode |    38.99305|    1.81504|   21.48328|  0.00000|
-| OEE\_B        | 2003 - 2008 | Periode |    10.96371|    0.70326|   15.58977|  0.00000|
-| OEE\_A        | 2003 - 2008 | Periode |    25.15333|    1.25109|   20.10520|  0.00000|
-| Total\_France | 1996 - 2000 | Periode |    55.42336|    2.21485|   25.02352|  0.00000|
-| Total\_France | 2003 - 2008 | Periode |    38.23328|    1.43519|   26.63980|  0.00000|
-| OEE\_B        | 1996 - 2000 | Periode |    34.21731|    1.03193|   33.15862|  0.00000|
-
-France et DOM
--------------
-
-Y a-t-il les mêmes variations entre la France et les DOM ? Nous ne disposons que des données totales et non par catégorie.
-
-``` r
-# Plus grande variabilité dans les DOM (avec un volume plus faible), tendances
-# semblables
-# Vérifions à partir d'un modèle linéaire simple
-
-
-mod_lm_France <- lm(Total_France ~ Periode, offres)
-mod_lm_France_df <- tidy(mod_lm_France)
-mod_lm_DOM <- lm(Total_DOM ~ Periode, offres)
-mod_lm_DOM_df <- tidy(mod_lm_DOM)
-
-models <- bind_rows("France" = mod_lm_France_df,"DOM" = mod_lm_DOM_df, .id = "Perimetre")
-models
-```
-
-    ##   Perimetre        term       estimate    std.error statistic    p.value
-    ## 1    France (Intercept) 213958.4693822 12182.347509  17.56299 8.6677e-45
-    ## 2    France     Periode      2.6119171     0.917017   2.84828 4.7818e-03
-    ## 3       DOM (Intercept)   5680.6452620   340.133194  16.70124 6.4813e-42
-    ## 4       DOM     Periode     -0.0063392     0.025603  -0.24759 8.0466e-01
-
-``` r
-# Sur la période, nous ne voyons pas la même tendance : positive et relativement
-# bonne (p.value ~5e-3) pour la France, mais légèrement négative pour les DOM
-
-offres_tot_groupe <- offres_totales %>%
-  mutate(groupe = factor(ifelse(Periode < as.Date("2008-01-01"),
-                                   "Avant 2008", "Après 2008"),
-                             levels = c("Avant 2008", "Après 2008")))
-
-ggplot(offres_tot_groupe, aes(Periode, nombre, color = categorie)) +
-  geom_line() +
-  facet_grid(categorie ~ groupe, scales = "free") +
-  geom_smooth(method = "lm", se = FALSE) +
-  theme_minimal()
-```
-
-![](offres_emplois_files/figure-markdown_github/unnamed-chunk-11-1.png)
-
-``` r
-# Avant et après la crise de 2008, les tendances sont nettement différentes
-
-offres_nest <- offres_tot_groupe %>%
-  nest(-groupe, - categorie) %>%
+  nest(-annee, -categorie) %>% 
   mutate(models = map(data, ~ lm(nombre ~ Periode, data = .))) %>%
   mutate(tidied = map(models, tidy)) %>%
   unnest(tidied)
 
-offres_nest %>%
-  group_by(term) %>%
-  mutate(p.adjusted = p.adjust(p.value)) %>%
-  select(-statistic, -p.value)
+offres_modeles
 ```
 
-    ## Source: local data frame [8 x 6]
-    ## Groups: term [2]
-    ## 
-    ##      categorie     groupe        term     estimate    std.error p.adjusted
-    ##         <fctr>     <fctr>       <chr>        <dbl>        <dbl>      <dbl>
-    ## 1 Total_France Avant 2008 (Intercept)   0.63772311 11.385183029 9.5541e-01
-    ## 2 Total_France Avant 2008     Periode   0.02127599  0.000969750 7.3947e-47
-    ## 3 Total_France Après 2008 (Intercept) 654.00853612 36.651673348 2.6237e-31
-    ## 4 Total_France Après 2008     Periode  -0.02658024  0.002390539 9.0873e-19
-    ## 5    Total_DOM Avant 2008 (Intercept)   0.42455590  0.421521506 6.3111e-01
-    ## 6    Total_DOM Avant 2008     Periode   0.00045245  0.000035904 1.9606e-24
-    ## 7    Total_DOM Après 2008 (Intercept)  18.01213155  0.987048920 6.8771e-32
-    ## 8    Total_DOM Après 2008     Periode  -0.00082162  0.000064378 7.4801e-22
+    ## # A tibble: 200 × 7
+    ##    categorie annee        term     estimate  std.error statistic
+    ##       <fctr> <dbl>       <chr>        <dbl>      <dbl>     <dbl>
+    ## 1      OEE_A  1996 (Intercept)  252267.8531 54046.8568    4.6676
+    ## 2      OEE_A  1996     Periode     -15.6383     5.5927   -2.7962
+    ## 3      OEE_A  1997 (Intercept) -306882.0944 87341.8172   -3.5136
+    ## 4      OEE_A  1997     Periode      40.7886     8.7089    4.6836
+    ## 5      OEE_A  1998 (Intercept)  392750.1786 83789.2612    4.6874
+    ## 6      OEE_A  1998     Periode     -27.4803     8.0613   -3.4089
+    ## 7      OEE_A  1999 (Intercept) -120350.7296 62701.5066   -1.9194
+    ## 8      OEE_A  1999     Periode      21.3971     5.8278    3.6715
+    ## 9      OEE_A  2000 (Intercept)   85403.9729 69620.1968    1.2267
+    ## 10     OEE_A  2000     Periode       3.2755     6.2581    0.5234
+    ## # ... with 190 more rows, and 1 more variables: p.value <dbl>
+
+Ce qui nous intéresse ici est le coefficient de la régression (ce qui est dans la colonne term et avec la valeur `Periode`) pour savoir quelle est la tendance (positive, négative, plus ou moins importante)
+
+``` r
+tendances <- offres_modeles  %>% 
+  filter(term == "Periode") %>% 
+  select(annee, categorie, tendance = estimate)
+```
+
+Comme toutes les courbes ne sont pas sur les mêmes échelles de valeurs, nous allons les remettre à l'échelle entre -1 et 1 pour chaque catégorie avec la fonction `GGally::rescale11`.
+
+``` r
+tendance_echelle <- tendances %>% 
+  group_by(categorie) %>% 
+  mutate(tendance = rescale11(tendance))
+```
+
+Nous pouvons maintenant faire une "heatmap" pour voir ces évolutions par année et par catégorie.
+
+``` r
+ggplot(tendance_echelle, 
+       aes(categorie, annee, fill = tendance)) +
+  geom_raster() +
+  scale_fill_gradientn(colors = brewer.pal(7, "RdYlBu"))+
+  scale_y_continuous(breaks = 1996:2015, labels = 1996:2015) +
+  scale_x_discrete(breaks = levels(tendance_echelle$categorie),
+                   labels = c("A", "B", "C", "DOM", "Total France"))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(x = NULL,
+       y = NULL,
+       fill = "Evolution\nannuelle\nrelative",
+       title = "Evolution annuelle des offres enregitrées d'emploi",
+       subtitle = "Calculée relativement pour chaque catégorie",
+       caption = "Source : pôle emploi")
+```
+
+![](offres_emplois_files/figure-markdown_github/Heatmap-1.png)
+
+Nous voyons que les catégories C sont en baisse continue (globalement) depuis 2005 où il y a eu la chute la plus importante.
