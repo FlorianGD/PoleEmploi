@@ -173,20 +173,21 @@ ggplot(
 #' Nous voyons mieux les variations, les catégories A subissent plus fortement 
 #' la crise de 2008, mais récupèrent mieux depuis 2013. Les catégories B quant à
 #' elles stagnent depuis 2013, avec une variabilité qui augmente.
-
+#' 
 #' ## Modélisation des OEE 
 #' Y a-t-il la même tendance, année par année pour toutes les catégories ? Et
 #' quelles sont les années/catégories qui se distinguent des autres ?  
 #' Pour cela, nous allons  créer des régressions linéaires pour chaque année
 #' et chaque catégorie. Cela nécessitera d'utiliser : 
 #' 
-#' 1. `tidyr::nest` pour créer un tibble avec colonnes de listes, pour regrouper
-#'  les données autres que annee et catégorie ;
-#' 2. `purrr::map` pour appliquer la régression linéaire `lm` pour chaque année
+#' 1. Créer une variable annee
+#' 2. `tidyr::nest` pour créer un tibble avec colonnes de listes, pour regrouper
+#' les données autres que annee et catégorie ;
+#' 3. `purrr::map` pour appliquer la régression linéaire `lm` pour chaque année
 #' et catégorie ;
-#' 3. encore `purrr::map` pour appliquer `broom::tidy` qui met sous forme de tibble
+#' 4. encore `purrr::map` pour appliquer `broom::tidy` qui met sous forme de tibble
 #' chaque modèle (mais toujours dans une colonne de listes) ;
-#' 4. et enfin `tidyr::unnest` pour remettre le modèle sous forme de tibble.
+#' 5. et enfin `tidyr::unnest` pour remettre le modèle sous forme de tibble.
 
 offres_modeles <- offres_long %>%
   mutate(annee = year(Periode)) %>%
@@ -207,7 +208,7 @@ tendances <- offres_modeles  %>%
 
 #' Comme toutes les courbes ne sont pas sur les mêmes échelles de valeurs, nous
 #' allons les remettre à l'échelle entre -1 et 1 pour chaque catégorie avec la
-#'fonction `GGally::rescale11`.
+#' fonction `GGally::rescale11`.
 
 tendance_echelle <- tendances %>% 
   group_by(categorie) %>% 
