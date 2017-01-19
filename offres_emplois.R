@@ -82,7 +82,6 @@ theme_set(theme_minimal())
 
 ggplot(offres, aes(Periode, Total_France /1000)) +
   geom_line(color = "tomato") +
-  geom_smooth(method = "loess", se = FALSE, span = 0.2) +
   labs(title = "Offres d'emplois en France métropolitaine",
        subtitle = "De 1996 à 2015",
        caption= "Source : pôle emploi",
@@ -109,7 +108,6 @@ ggplot(offres, aes(Periode, Total_France /1000)) +
 
 ggplot(data = offres_OEE, aes(Periode, nombre, color = categorie)) +
   geom_line() +
-  geom_smooth(se = FALSE, method = "loess", span = 0.2) +
   labs(
     title = "Nombre d'offres d'emplois par mois",
     subtitle = "De 1996 à 2015, par catégorie\nA est une offre d'emploi de plus de 6 mois, B entre 1 et 6 mois, et C inférieur à 1 mois",
@@ -153,7 +151,6 @@ ggplot(
   aes(Periode, nombre, color = categorie)
 ) +
   geom_line() +
-  geom_smooth(se = FALSE, method = "loess", span = 0.3) +
   labs(
     title = "Nombre d'offres d'emplois par mois",
     subtitle = "De 1999 à 2015, par catégorie\nA est une offre d'emploi de plus de 6 mois, B entre 1 et 6 mois",
