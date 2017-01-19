@@ -329,22 +329,31 @@ Nous pouvons maintenant faire une "heatmap" pour voir ces évolutions par année
 
 ``` r
 ggplot(tendance_echelle, 
-       aes(categorie, annee, fill = tendance)) +
+       aes(y = categorie, x = annee, fill = tendance)) +
   geom_raster() +
   scale_fill_gradientn(colors = brewer.pal(7, "RdYlBu"))+
-  scale_y_continuous(breaks = 1996:2015, labels = 1996:2015) +
-  scale_x_discrete(breaks = levels(tendance_echelle$categorie),
-                   labels = c("A", "B", "C", "DOM", "Total France"))+
+  scale_x_continuous(breaks = 1996:2015, labels = 1996:2015) +
+  scale_y_discrete(breaks = levels(tendance_echelle$categorie),
+                   labels = c("A", "B", "C", "DOM", "Total\nFrance"))+
   theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank()) +
+        panel.grid.minor = element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_text(angle = 90)) +
   labs(x = NULL,
        y = NULL,
-       fill = "Evolution\nannuelle\nrelative",
+       fill = "Evolution",
        title = "Evolution annuelle des offres enregitrées d'emploi",
-       subtitle = "Calculée relativement pour chaque catégorie",
+       subtitle = "Rouge représente une baisse, jaune un équilibre et bleu une augmentation",
        caption = "Source : pôle emploi")
 ```
 
 ![](offres_emplois_files/figure-markdown_github/Heatmap-1.png)
 
 Nous voyons que les catégories C sont en baisse continue (globalement) depuis 2005 où il y a eu la chute la plus importante.
+Les catégories B ont subi leur plus forte chute en 2012, c'est la catégorie qui a le plus subi la crise de la zone euro.
+La catégorie A a fortement reculé en 2008, et il y a un léger mieux depuis 2013. La variation des offres d'emploi enregistrées dans les DOM est assez différente de la variation des autres variables.
+
+Conclusion
+----------
+
+A partir des offres d'emploi enregistrées, nous pouvons voir les différentes crises économiques. Les offres d'emploi inférieures à 1 mois sont peu importantes et diminuent depuis plusieurs années. Les offres d'emploi de plus de 6 mois sont en progression ces dernières années.
