@@ -341,7 +341,7 @@ ggplot(tendance_echelle,
         axis.text.x = element_text(angle = 90)) +
   labs(x = NULL,
        y = NULL,
-       fill = "Evolution",
+       fill = "Evolution\n",
        title = "Evolution annuelle des offres enregitrées d'emploi",
        subtitle = "Rouge représente une baisse, jaune un équilibre et bleu une augmentation",
        caption = "Source : pôle emploi")
